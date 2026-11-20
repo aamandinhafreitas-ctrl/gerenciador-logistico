@@ -1,4 +1,3 @@
-
 # Gerenciador Logístico
 
 ## Sobre o projeto
@@ -41,12 +40,13 @@ As tabelas estão relacionadas por meio de chaves estrangeiras.
 
 1. Instale o XAMPP.
 2. Inicie os serviços Apache e MySQL.
-3. Copie a pasta do projeto para `C:\xampp\htdocs`.
+3. Copie a pasta do projeto para `C:\xampp\htdocs\`.
 4. Acesse o phpMyAdmin pelo navegador.
 5. Crie o banco de dados `gerenciador_logistico`.
-6. Execute os comandos SQL de criação das tabelas.
-7. Confira as configurações de conexão no arquivo `conexao.php`.
-8. Acesse pelo navegador:
+6. Selecione o banco criado e acesse a aba **Importar**.
+7. Selecione o arquivo `gerenciador_logistico.sql` e execute a importação.
+8. Confira as configurações de conexão no arquivo `conexao.php`.
+9. Acesse pelo navegador:
 
    http://localhost/gerenciador_logistico/
 
@@ -60,6 +60,8 @@ As tabelas estão relacionadas por meio de chaves estrangeiras.
 - `relatorios.php` – Relatórios do sistema.
 - `exportar_fretes.php` – Exportação de fretes em CSV.
 - `conexao.php` – Conexão com o banco de dados.
+- `banco.sql` – Script de criação da estrutura do banco.
+- `gerenciador_logistico.sql` – Backup do banco com estrutura e dados fictícios.
 
 ---
 
