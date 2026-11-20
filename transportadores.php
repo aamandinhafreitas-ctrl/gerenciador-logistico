@@ -4,6 +4,41 @@ require_once "conexao.php";
 
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
+// MENSAGENS
+$mensagens = [
+    "sucesso" => "Transportador cadastrado com sucesso!",
+    "editado" => "Transportador atualizado com sucesso!",
+    "excluido" => "Transportador excluído com sucesso!",
+    "erro_exclusao" => "Este transportador está vinculado a um frete e não pode ser excluído.",
+    "erro" => "Ocorreu um erro ao processar a operação."
+];
+
+// ATUALIZAR TRANSPORTADOR
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["atualizar_id"])) {
+
+    $id = (int) $_POST["atualizar_id"];
+    $nome = trim($_POST["nome"]);
+    $telefone = trim($_POST["telefone"]);
+    $email = trim($_POST["email"]);
+
+    try {
+        $sql = "UPDATE transportadores
+                SET nome = ?, telefone = ?, email = ?
+                WHERE id = ?";
+
+        $stmt = $conexao->prepare($sql);
+        $stmt->bind_param("sssi", $nome, $telefone, $email, $id);
+        $stmt->execute();
+
+        header("Location: transportadores.php?editado=1");
+        exit;
+
+    } catch (mysqli_sql_exception $e) {
+        header("Location: transportadores.php?erro=1");
+        exit;
+    }
+}
+
 // CADASTRAR TRANSPORTADOR
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["salvar"])) {
 
@@ -34,6 +69,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["excluir_id"])) {
     $id = (int) $_POST["excluir_id"];
 
     try {
+        // Verifica se o transportador está vinculado a algum frete
+        $sql = "SELECT COUNT(*) AS total
+                FROM fretes
+                WHERE transportador_id = ?";
+
+        $stmt = $conexao->prepare($sql);
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+
+        $vinculo = $stmt->get_result()->fetch_assoc();
+
+        if ($vinculo["total"] > 0) {
+            header("Location: transportadores.php?erro_exclusao=1");
+            exit;
+        }
+
         $sql = "DELETE FROM transportadores WHERE id = ?";
 
         $stmt = $conexao->prepare($sql);
@@ -53,6 +104,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["excluir_id"])) {
 
         exit;
     }
+}
+
+// BUSCAR TRANSPORTADOR PARA EDIÇÃO
+$transportador_edicao = null;
+
+if (isset($_GET["editar_id"])) {
+
+    $id = (int) $_GET["editar_id"];
+
+    $sql = "SELECT * FROM transportadores WHERE id = ?";
+    $stmt = $conexao->prepare($sql);
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+
+    $transportador_edicao = $stmt->get_result()->fetch_assoc();
 }
 
 // LISTAR TRANSPORTADORES
@@ -99,36 +165,29 @@ $resultado = $conexao->query($sql);
             <hr>
 
             <!-- MENSAGENS -->
-            <?php if (isset($_GET["sucesso"])): ?>
-                <div class="alert alert-success">
-                    Transportador cadastrado com sucesso!
-                </div>
-            <?php endif; ?>
-
-            <?php if (isset($_GET["excluido"])): ?>
-                <div class="alert alert-success">
-                    Transportador excluído com sucesso!
-                </div>
-            <?php endif; ?>
-
-            <?php if (isset($_GET["erro_exclusao"])): ?>
-                <div class="alert alert-danger">
-                    Este transportador está vinculado a um frete e não pode ser excluído.
-                </div>
-            <?php endif; ?>
-
-            <?php if (isset($_GET["erro"])): ?>
-                <div class="alert alert-danger">
-                    Ocorreu um erro ao processar a operação.
-                </div>
-            <?php endif; ?>
+            <?php foreach ($mensagens as $chave => $mensagem): ?>
+                <?php if (isset($_GET[$chave])): ?>
+                    <div class="alert <?= in_array($chave, ["erro", "erro_exclusao"]) ? "alert-danger" : "alert-success" ?>">
+                        <?= htmlspecialchars($mensagem) ?>
+                    </div>
+                <?php endif; ?>
+            <?php endforeach; ?>
 
             <!-- FORMULÁRIO -->
             <div class="card shadow-sm p-4 mb-4">
 
-                <h4 class="mb-3">Novo transportador</h4>
+                <h4 class="mb-3">
+                    <?= $transportador_edicao ? "Editar transportador" : "Novo transportador" ?>
+                </h4>
 
                 <form method="POST" action="transportadores.php">
+
+                    <?php if ($transportador_edicao): ?>
+                        <input
+                            type="hidden"
+                            name="atualizar_id"
+                            value="<?= $transportador_edicao["id"] ?>">
+                    <?php endif; ?>
 
                     <div class="mb-3">
                         <label class="form-label">Nome do transportador</label>
@@ -137,6 +196,7 @@ $resultado = $conexao->query($sql);
                             name="nome"
                             class="form-control"
                             placeholder="Digite o nome"
+                            value="<?= htmlspecialchars($transportador_edicao["nome"] ?? "") ?>"
                             required>
                     </div>
 
@@ -148,7 +208,8 @@ $resultado = $conexao->query($sql);
                                 type="text"
                                 name="telefone"
                                 class="form-control"
-                                placeholder="(00) 00000-0000">
+                                placeholder="(00) 00000-0000"
+                                value="<?= htmlspecialchars($transportador_edicao["telefone"] ?? "") ?>">
                         </div>
 
                         <div class="col-md-6 mb-3">
@@ -157,18 +218,33 @@ $resultado = $conexao->query($sql);
                                 type="email"
                                 name="email"
                                 class="form-control"
-                                placeholder="exemplo@email.com">
+                                placeholder="exemplo@email.com"
+                                value="<?= htmlspecialchars($transportador_edicao["email"] ?? "") ?>">
                         </div>
 
                     </div>
 
-                    <button type="submit" name="salvar" class="btn btn-success">
-                        Salvar transportador
-                    </button>
+                    <?php if ($transportador_edicao): ?>
 
-                    <button type="reset" class="btn btn-secondary">
-                        Cancelar
-                    </button>
+                        <button type="submit" class="btn btn-primary">
+                            Atualizar transportador
+                        </button>
+
+                        <a href="transportadores.php" class="btn btn-secondary">
+                            Cancelar edição
+                        </a>
+
+                    <?php else: ?>
+
+                        <button type="submit" name="salvar" class="btn btn-success">
+                            Salvar transportador
+                        </button>
+
+                        <button type="reset" class="btn btn-secondary">
+                            Limpar
+                        </button>
+
+                    <?php endif; ?>
 
                 </form>
 
@@ -210,29 +286,40 @@ $resultado = $conexao->query($sql);
                                         </td>
 
                                         <td>
-                                            <?= htmlspecialchars($transportador["telefone"]) ?>
+                                            <?= htmlspecialchars($transportador["telefone"] ?? "") ?>
                                         </td>
 
                                         <td>
-                                            <?= htmlspecialchars($transportador["email"]) ?>
+                                            <?= htmlspecialchars($transportador["email"] ?? "") ?>
                                         </td>
 
                                         <td>
 
-                                            <form method="POST"
-                                                  action="transportadores.php"
-                                                  onsubmit="return confirm('Deseja realmente excluir este transportador?');">
+                                            <div class="d-flex gap-2">
 
-                                                <input
-                                                    type="hidden"
-                                                    name="excluir_id"
-                                                    value="<?= $transportador["id"] ?>">
+                                                <a
+                                                    href="transportadores.php?editar_id=<?= $transportador["id"] ?>"
+                                                    class="btn btn-primary btn-sm">
+                                                    Editar
+                                                </a>
 
-                                                <button type="submit" class="btn btn-danger btn-sm">
-                                                    Excluir
-                                                </button>
+                                                <form
+                                                    method="POST"
+                                                    action="transportadores.php"
+                                                    onsubmit="return confirm('Deseja realmente excluir este transportador?');">
 
-                                            </form>
+                                                    <input
+                                                        type="hidden"
+                                                        name="excluir_id"
+                                                        value="<?= $transportador["id"] ?>">
+
+                                                    <button type="submit" class="btn btn-danger btn-sm">
+                                                        Excluir
+                                                    </button>
+
+                                                </form>
+
+                                            </div>
 
                                         </td>
 

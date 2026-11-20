@@ -2,7 +2,29 @@
 <?php
 require_once "conexao.php";
 
-// CONTADORES
+// FILTRO POR PERÍODO
+$data_inicio = $_GET["data_inicio"] ?? "";
+$data_fim = $_GET["data_fim"] ?? "";
+
+$filtro = "";
+$parametros = [];
+$tipos = "";
+
+if ($data_inicio !== "" && $data_fim !== "") {
+    $filtro = " WHERE f.data_saida BETWEEN ? AND ?";
+    $parametros = [$data_inicio, $data_fim];
+    $tipos = "ss";
+} elseif ($data_inicio !== "") {
+    $filtro = " WHERE f.data_saida >= ?";
+    $parametros = [$data_inicio];
+    $tipos = "s";
+} elseif ($data_fim !== "") {
+    $filtro = " WHERE f.data_saida <= ?";
+    $parametros = [$data_fim];
+    $tipos = "s";
+}
+
+// CONTADORES GERAIS
 $total_produtos = $conexao->query(
     "SELECT COUNT(*) AS total FROM produtos"
 )->fetch_assoc()["total"];
@@ -19,26 +41,46 @@ $total_fretes = $conexao->query(
     "SELECT COUNT(*) AS total FROM fretes"
 )->fetch_assoc()["total"];
 
-// VALOR TOTAL DOS FRETES
-$valor_total = $conexao->query(
-    "SELECT SUM(valor) AS total FROM fretes"
-)->fetch_assoc()["total"];
+// VALOR TOTAL DOS FRETES NO PERÍODO
+$sql_valor = "SELECT COALESCE(SUM(f.valor), 0) AS total
+              FROM fretes f" . $filtro;
 
-if ($valor_total === null) {
-    $valor_total = 0;
+$stmt_valor = $conexao->prepare($sql_valor);
+
+if (!empty($parametros)) {
+    $stmt_valor->bind_param($tipos, ...$parametros);
 }
 
-// FRETES POR SITUAÇÃO
-$sql_situacoes = "SELECT situacao, COUNT(*) AS total
-                  FROM fretes
-                  GROUP BY situacao";
+$stmt_valor->execute();
+$valor_total = $stmt_valor->get_result()->fetch_assoc()["total"];
+$stmt_valor->close();
 
-$situacoes = $conexao->query($sql_situacoes);
+// FRETES POR SITUAÇÃO NO PERÍODO
+$sql_situacoes = "SELECT f.situacao, COUNT(*) AS total
+                  FROM fretes f
+                  $filtro
+                  GROUP BY f.situacao";
 
-// LISTAGEM DOS FRETES
+$stmt_situacoes = $conexao->prepare($sql_situacoes);
+
+if (!empty($parametros)) {
+    $stmt_situacoes->bind_param($tipos, ...$parametros);
+}
+
+$stmt_situacoes->execute();
+$situacoes = $stmt_situacoes->get_result();
+
+// LISTAGEM DOS FRETES E SEUS PRODUTOS
 $sql = "SELECT
             f.id,
-            p.nome AS produto,
+            COALESCE(
+                GROUP_CONCAT(
+                    CONCAT(p.nome, ' (Qtd: ', fp.quantidade, ')')
+                    ORDER BY p.nome
+                    SEPARATOR ', '
+                ),
+                'Sem produtos'
+            ) AS produtos,
             t.nome AS transportador,
             o.identificacao AS origem,
             d.identificacao AS destino,
@@ -47,13 +89,41 @@ $sql = "SELECT
             f.valor,
             f.situacao
         FROM fretes f
-        INNER JOIN produtos p ON f.produto_id = p.id
-        INNER JOIN transportadores t ON f.transportador_id = t.id
-        INNER JOIN enderecos o ON f.origem_id = o.id
-        INNER JOIN enderecos d ON f.destino_id = d.id
+        LEFT JOIN frete_produtos fp ON f.id = fp.frete_id
+        LEFT JOIN produtos p ON fp.produto_id = p.id
+        LEFT JOIN transportadores t ON f.transportador_id = t.id
+        LEFT JOIN enderecos o ON f.origem_id = o.id
+        LEFT JOIN enderecos d ON f.destino_id = d.id
+        $filtro
+        GROUP BY
+            f.id,
+            t.nome,
+            o.identificacao,
+            d.identificacao,
+            f.data_saida,
+            f.data_entrega,
+            f.valor,
+            f.situacao
         ORDER BY f.id DESC";
 
-$fretes = $conexao->query($sql);
+$stmt_fretes = $conexao->prepare($sql);
+
+if (!empty($parametros)) {
+    $stmt_fretes->bind_param($tipos, ...$parametros);
+}
+
+$stmt_fretes->execute();
+$fretes = $stmt_fretes->get_result();
+
+// URL PARA EXPORTAÇÃO COM O MESMO FILTRO
+$url_exportacao = "exportar_fretes.php";
+
+if ($data_inicio !== "" || $data_fim !== "") {
+    $url_exportacao .= "?" . http_build_query([
+        "data_inicio" => $data_inicio,
+        "data_fim" => $data_fim
+    ]);
+}
 ?>
 
 <!DOCTYPE html>
@@ -134,11 +204,68 @@ $fretes = $conexao->query($sql);
 
             <!-- VALOR TOTAL -->
             <div class="card shadow-sm p-4 mb-4">
-                <h5 class="text-muted">Valor total dos fretes cadastrados</h5>
+                <h5 class="text-muted">Valor total dos fretes no período</h5>
 
                 <h2 class="text-success">
                     R$ <?= number_format($valor_total, 2, ",", ".") ?>
                 </h2>
+            </div>
+
+            <!-- FILTRO POR PERÍODO -->
+            <div class="card shadow-sm p-4 mb-4">
+
+                <h4 class="mb-3">Filtrar fretes por período</h4>
+
+                <form method="GET" action="relatorios.php">
+
+                    <div class="row align-items-end">
+
+                        <div class="col-md-4 mb-3">
+                            <label for="data_inicio" class="form-label">
+                                Data inicial
+                            </label>
+
+                            <input
+                                type="date"
+                                name="data_inicio"
+                                id="data_inicio"
+                                class="form-control"
+                                value="<?= htmlspecialchars($data_inicio) ?>"
+                            >
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label for="data_fim" class="form-label">
+                                Data final
+                            </label>
+
+                            <input
+                                type="date"
+                                name="data_fim"
+                                id="data_fim"
+                                class="form-control"
+                                value="<?= htmlspecialchars($data_fim) ?>"
+                            >
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <button type="submit" class="btn btn-primary">
+                                Filtrar
+                            </button>
+
+                            <a href="relatorios.php" class="btn btn-secondary">
+                                Limpar
+                            </a>
+                        </div>
+
+                    </div>
+
+                </form>
+
+                <small class="text-muted">
+                    O filtro considera a data de saída dos fretes.
+                </small>
+
             </div>
 
             <!-- SITUAÇÃO DOS FRETES -->
@@ -165,7 +292,7 @@ $fretes = $conexao->query($sql);
 
                                     <tr>
                                         <td>
-                                            <?= htmlspecialchars($situacao["situacao"]) ?>
+                                            <?= htmlspecialchars($situacao["situacao"] ?? "") ?>
                                         </td>
 
                                         <td>
@@ -179,7 +306,7 @@ $fretes = $conexao->query($sql);
 
                                 <tr>
                                     <td colspan="2" class="text-center text-muted">
-                                        Nenhum frete cadastrado.
+                                        Nenhum frete encontrado no período.
                                     </td>
                                 </tr>
 
@@ -198,19 +325,19 @@ $fretes = $conexao->query($sql);
 
                 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
 
-    <h4>Relação de fretes</h4>
+                    <h4>Relação de fretes</h4>
 
-    <div>
-        <a href="exportar_fretes.php" class="btn btn-primary">
-            Exportar CSV
-        </a>
+                    <div>
+                        <a href="<?= htmlspecialchars($url_exportacao) ?>" class="btn btn-primary">
+                            Exportar CSV
+                        </a>
 
-        <button onclick="window.print()" class="btn btn-success">
-            Imprimir relatório
-        </button>
-    </div>
+                        <button onclick="window.print()" class="btn btn-success">
+                            Imprimir relatório
+                        </button>
+                    </div>
 
-</div>
+                </div>
 
                 <div class="table-responsive">
 
@@ -219,7 +346,7 @@ $fretes = $conexao->query($sql);
                         <thead class="table-dark">
                             <tr>
                                 <th>ID</th>
-                                <th>Produto</th>
+                                <th>Produtos e quantidades</th>
                                 <th>Transportador</th>
                                 <th>Origem</th>
                                 <th>Destino</th>
@@ -240,23 +367,31 @@ $fretes = $conexao->query($sql);
 
                                         <td><?= $frete["id"] ?></td>
 
-                                        <td><?= htmlspecialchars($frete["produto"]) ?></td>
+                                        <td><?= htmlspecialchars($frete["produtos"]) ?></td>
 
-                                        <td><?= htmlspecialchars($frete["transportador"]) ?></td>
+                                        <td><?= htmlspecialchars($frete["transportador"] ?? "") ?></td>
 
-                                        <td><?= htmlspecialchars($frete["origem"]) ?></td>
+                                        <td><?= htmlspecialchars($frete["origem"] ?? "") ?></td>
 
-                                        <td><?= htmlspecialchars($frete["destino"]) ?></td>
+                                        <td><?= htmlspecialchars($frete["destino"] ?? "") ?></td>
 
-                                        <td><?= date("d/m/Y", strtotime($frete["data_saida"])) ?></td>
+                                        <td>
+                                            <?= !empty($frete["data_saida"])
+                                                ? date("d/m/Y", strtotime($frete["data_saida"]))
+                                                : "" ?>
+                                        </td>
 
-                                        <td><?= date("d/m/Y", strtotime($frete["data_entrega"])) ?></td>
+                                        <td>
+                                            <?= !empty($frete["data_entrega"])
+                                                ? date("d/m/Y", strtotime($frete["data_entrega"]))
+                                                : "" ?>
+                                        </td>
 
                                         <td>
                                             R$ <?= number_format($frete["valor"], 2, ",", ".") ?>
                                         </td>
 
-                                        <td><?= htmlspecialchars($frete["situacao"]) ?></td>
+                                        <td><?= htmlspecialchars($frete["situacao"] ?? "") ?></td>
 
                                     </tr>
 
@@ -266,7 +401,7 @@ $fretes = $conexao->query($sql);
 
                                 <tr>
                                     <td colspan="9" class="text-center text-muted">
-                                        Nenhum frete cadastrado.
+                                        Nenhum frete encontrado no período.
                                     </td>
                                 </tr>
 

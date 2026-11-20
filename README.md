@@ -6,12 +6,13 @@ O Gerenciador Logístico é um sistema web desenvolvido para auxiliar no control
 
 ## Funcionalidades
 
-- Cadastro, consulta e exclusão de produtos.
-- Cadastro, consulta e exclusão de endereços.
-- Cadastro, consulta e exclusão de transportadores.
-- Cadastro, consulta e exclusão de fretes.
+- Cadastro, consulta, edição e exclusão de produtos.
+- Cadastro, consulta, edição e exclusão de endereços.
+- Cadastro, consulta, edição e exclusão de transportadores.
+- Cadastro, consulta, edição e exclusão de fretes.
+- Associação de vários produtos a um mesmo frete, com controle de quantidades.
 - Painel inicial com indicadores atualizados automaticamente.
-- Relatórios de fretes.
+- Relatórios de fretes com filtros por período.
 - Exportação de relatórios em formato CSV.
 - Impressão de relatórios.
 
@@ -29,12 +30,13 @@ O Gerenciador Logístico é um sistema web desenvolvido para auxiliar no control
 
 O sistema utiliza o banco de dados `gerenciador_logistico`, composto pelas seguintes tabelas:
 
-- produtos
-- enderecos
-- transportadores
-- fretes
+- `produtos`
+- `enderecos`
+- `transportadores`
+- `fretes`
+- `frete_produtos`
 
-As tabelas estão relacionadas por meio de chaves estrangeiras.
+A tabela `frete_produtos` permite relacionar vários produtos a um mesmo frete, armazenando também a quantidade de cada produto transportado.
 
 ## Como executar o projeto
 
@@ -48,7 +50,7 @@ As tabelas estão relacionadas por meio de chaves estrangeiras.
 8. Confira as configurações de conexão no arquivo `conexao.php`.
 9. Acesse pelo navegador:
 
-   http://localhost/gerenciador_logistico/
+   `http://localhost/gerenciador_logistico/`
 
 ## Estrutura do projeto
 
@@ -56,7 +58,7 @@ As tabelas estão relacionadas por meio de chaves estrangeiras.
 - `produtos.php` – Gerenciamento de produtos.
 - `enderecos.php` – Gerenciamento de endereços.
 - `transportadores.php` – Gerenciamento de transportadores.
-- `fretes.php` – Gerenciamento de fretes.
+- `fretes.php` – Gerenciamento de fretes e produtos associados.
 - `relatorios.php` – Relatórios do sistema.
 - `exportar_fretes.php` – Exportação de fretes em CSV.
 - `conexao.php` – Conexão com o banco de dados.
